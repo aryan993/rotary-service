@@ -49,14 +49,14 @@ async function fetchByType(date, type) {
 
     if (type === "member") {
       query = query
-        .select("id, name, club, phone, email, role")
+        .select("id, name, email")
         .eq("type", "member")
         .eq("dob", date)
         .eq("poster", true)
         .eq("active", true);
     } else if (type === "spouse") {
       query = query
-        .select("id, name, club, phone, email, partner:partner_id (id, name)")
+        .select("id, name, email, partner:partner_id (id, name)")
         .eq("type", "spouse")
         .eq("dob", date)
         .eq("poster", true)
@@ -64,7 +64,7 @@ async function fetchByType(date, type) {
     } else if (type === "anniversary") {
       query = query
         .select(
-          "id, name, club, email, phone, role, annposter, partner:partner_id (id, name, club, email, phone, active, annposter)"
+          "id, name,email, annposter, partner:partner_id (id, name,email,annposter)"
         )
         .eq("anniversary", date)
         .eq("active", true);
@@ -80,7 +80,7 @@ async function fetchByType(date, type) {
     processedData = data;
 
     if (type === "anniversary") {
-      processedData = data.filter((item) => item.partner?.active === true);
+      processedData = data.filter((item) => item.partner && item.partner.active === true).filter((item=>item.annposter||item.partner.annposter));
     }
 
     return processedData;

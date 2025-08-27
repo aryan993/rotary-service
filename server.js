@@ -6,10 +6,14 @@ app.use(express.json());
 // Import controllers
 const { personalEmailHandler } = require('./controllers/personal-email');
 const { helloHandler } = require('./controllers/hello');
+const { singleEmailHandler } = require('./controllers/single-email');
+const { dailyEmailHandler } = require('./controllers/daily');
 
 // Define routes
 app.post('/personal-email', personalEmailHandler);
 app.get('/hello', helloHandler);
+app.post('/single-email', singleEmailHandler);
+app.post('/daily', dailyEmailHandler); // New endpoint
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -19,7 +23,26 @@ app.get('/', (req, res) => {
       personalEmail: {
         method: "POST",
         path: "/personal-email",
-        description: "Send personalized emails"
+        description: "Send emails to all users with events today"
+      },
+      singleEmail: {
+        method: "POST",
+        path: "/single-email",
+        description: "Send email to specific user for specific event",
+        body: {
+          id: "number (required)",
+          eventType: "string (required: 'birthday' or 'anniversary')"
+        }
+      },
+      daily: {
+        method: "POST",
+        path: "/daily",
+        description: "Send daily birthday and anniversary notifications",
+        body: {
+          type: "string (required: 'test', 'realtime', or 'advance')",
+          date: "string (optional, format: 'YYYY-MM-DD')",
+          listOfEmails: "array (optional, for testing)"
+        }
       },
       hello: {
         method: "GET",
@@ -37,6 +60,8 @@ app.use('*', (req, res) => {
     availableEndpoints: [
       "GET /",
       "POST /personal-email",
+      "POST /single-email",
+      "POST /daily",
       "GET /hello"
     ]
   });
@@ -58,6 +83,8 @@ app.listen(PORT, () => {
   console.log(`Endpoints:`);
   console.log(`- GET  http://localhost:${PORT}/`);
   console.log(`- POST http://localhost:${PORT}/personal-email`);
+  console.log(`- POST http://localhost:${PORT}/single-email`);
+  console.log(`- POST http://localhost:${PORT}/daily`);
   console.log(`- GET  http://localhost:${PORT}/hello`);
 });
 
