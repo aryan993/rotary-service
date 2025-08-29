@@ -518,7 +518,6 @@ async function sendInBatches(recipients, batchSize, { transporter, html, attachm
                     })
                 }
             }).then(() => {
-                console.log("✅ Sent to", recipient);
                 successCount++;
             }).catch(err => {
                 console.error("❌ Failed to send to", recipient, err.message);

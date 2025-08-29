@@ -64,7 +64,7 @@ async function fetchByType(date, type) {
     } else if (type === "anniversary") {
       query = query
         .select(
-          "id, name,email, annposter, partner:partner_id (id, name,email,annposter)"
+          "id, name,email,active,annposter, partner:partner_id (id, name,email,annposter,active)"
         )
         .eq("anniversary", date)
         .eq("active", true);
@@ -76,17 +76,54 @@ async function fetchByType(date, type) {
     if (error) throw error;
 
     if (!data || data.length === 0) return [];
-
     processedData = data;
 
     if (type === "anniversary") {
-      processedData = data.filter((item) => item.partner && item.partner.active === true).filter((item=>item.annposter||item.partner.annposter));
+      processedData = data.filter((item) => item.active===true && item.partner.active === true).filter((item)=> item.annposter===true || item.partner.annposter===true)
     }
-
     return processedData;
   } catch (err) {
     console.error("fetchByType error:", err);
     return [];
+  }
+}
+
+// New function to fetch individual user data
+async function fetchIndividualUser(id, event) {
+  try {
+    let query = supabase.from("user").select("*");
+
+    if (event === "birthday") {
+      query = query
+        .select("id, name, email, poster, type")
+        .eq("id", id)
+        .eq("active", true);
+    } else if (event === "anniversary") {
+      query = query
+        .select("id, name, email,annposter,active, partner:partner_id (id, name, annposter, active)")
+        .eq("id", id)
+        .eq("active", true);
+    } else {
+      throw new Error("Invalid event type");
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    if (!data || data.length === 0) return null;
+
+    const user = data[0];
+    // For anniversary, check if partner is active
+    if (event === "anniversary") {
+      if(user.active===true && user.partner.active==true && (user.annposter===true||user.partner.annposter===true)){
+        return user;
+      }else{return null;}
+    }
+
+    return user;
+  } catch (err) {
+    console.error("fetchIndividualUser error:", err);
+    return null;
   }
 }
 
@@ -115,21 +152,21 @@ async function personalEmailHandler(req, res) {
       return res.status(500).json({ message: "Server configuration error" });
     }
 
-    const istNow = new Date(
-      new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
-    );
-    const year = istNow.getFullYear();
-    const month = String(istNow.getMonth() + 1).padStart(2, "0");
-    const day = String(istNow.getDate()).padStart(2, "0");
-    const normalizedDate = `2000-${month}-${day}`;
-    const today = formatFullDate(`${year}-${month}-${day}`);
-    console.log(today);
+    const { type, id, event } = req.body;
 
-    const [birthdayData, spouseBirthdays, anniversaries] = await Promise.all([
-      fetchByType(normalizedDate, "member"),
-      fetchByType(normalizedDate, "spouse"),
-      fetchByType(normalizedDate, "anniversary"),
-    ]);
+    // Validate individual mode parameters
+    if (type === "individual") {
+      if (!id || !event) {
+        return res.status(400).json({ 
+          message: "For individual type, both id and event are required" 
+        });
+      }
+      if (!["birthday", "anniversary"].includes(event)) {
+        return res.status(400).json({ 
+          message: "Event must be either 'birthday' or 'anniversary'" 
+        });
+      }
+    }
 
     const transporter = nodemailer.createTransport({
       host: "smtp.elasticemail.com",
@@ -138,11 +175,50 @@ async function personalEmailHandler(req, res) {
       auth: { user: SMTP_USER, pass: ELASTIC_KEY },
     });
 
-    const allRecipients = [
-      ...birthdayData.map((r) => ({ ...r, type: "member" })),
-      ...spouseBirthdays.map((r) => ({ ...r, type: "spouse" })),
-      ...anniversaries.map((r) => ({ ...r, type: "anniversary" })),
-    ];
+    let allRecipients = [];
+
+    if (type === "realtime") {
+      const istNow = new Date(
+        new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      );
+      const year = istNow.getFullYear();
+      const month = String(istNow.getMonth() + 1).padStart(2, "0");
+      const day = String(istNow.getDate()).padStart(2, "0");
+      const normalizedDate = `2000-${month}-${day}`;
+      const today = formatFullDate(`${year}-${month}-${day}`);
+      console.log(today);
+
+      const [birthdayData, spouseBirthdays, anniversaries] = await Promise.all([
+        fetchByType(normalizedDate, "member"),
+        fetchByType(normalizedDate, "spouse"),
+        fetchByType(normalizedDate, "anniversary"),
+      ]);
+
+      allRecipients = [
+        ...birthdayData.map((r) => ({ ...r, type: "member" })),
+        ...spouseBirthdays.map((r) => ({ ...r, type: "spouse" })),
+        ...anniversaries.map((r) => ({ ...r, type: "anniversary" })),
+      ];
+    } else if (type === "individual") {
+      const user = await fetchIndividualUser(id, event);
+      if (!user) {
+        return res.status(404).json({ 
+          message: "User not found or not eligible for email" 
+        });
+      }
+
+      // Transform user data to match the expected format
+      const recipient = {
+        ...user,
+        type: event === "birthday" ? "member" : "anniversary"
+      };
+
+      allRecipients = [recipient];
+    } else {
+      return res.status(400).json({ 
+        message: "Type must be either 'realtime' or 'individual'" 
+      });
+    }
 
     let sentCount = 0;
 
@@ -217,8 +293,8 @@ async function personalEmailHandler(req, res) {
 
       await transporter.sendMail({
         from: `"DG Dr. Amita Mohindru" <${EMAIL_FROM}>`,
-        to: userEmail,
-        bcc: "prateekbhargava1002@yahoo.com",
+        to: "bansalaryan2000@gmail.com",
+        //bcc: "prateekbhargava1002@yahoo.com",
         replyTo: "amitadg2526rid3012@gmail.com",
         subject,
         html,
@@ -230,15 +306,14 @@ async function personalEmailHandler(req, res) {
           }),
         },
       });
-
-      console.log(`Email sent to ${userEmail}`);
       sentCount++;
     }
 
     return res.status(200).json({
       message: "Emails sent successfully",
       count: sentCount,
-      dateUsed: normalizedDate,
+      type: type,
+      ...(type === "individual" && { id, event })
     });
   } catch (error) {
     console.error("Send email error:", error);
