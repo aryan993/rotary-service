@@ -3,19 +3,15 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
+// Import middleware
+const { apiKeyAuth } = require('./middleware/auth');
+
 // Import controllers
 const { personalEmailHandler } = require('./controllers/personal-email');
 const { helloHandler } = require('./controllers/hello');
-const { singleEmailHandler } = require('./controllers/single-email');
 const { dailyEmailHandler } = require('./controllers/daily');
 
-// Define routes
-app.post('/personal-email', personalEmailHandler);
-app.get('/hello', helloHandler);
-app.post('/single-email', singleEmailHandler);
-app.post('/daily', dailyEmailHandler); // New endpoint
-
-// Root endpoint
+// Public endpoint - no authentication
 app.get('/', (req, res) => {
   res.status(200).json({
     message: "Welcome to the API Server",
@@ -23,21 +19,14 @@ app.get('/', (req, res) => {
       personalEmail: {
         method: "POST",
         path: "/personal-email",
-        description: "Send emails to all users with events today"
-      },
-      singleEmail: {
-        method: "POST",
-        path: "/single-email",
-        description: "Send email to specific user for specific event",
-        body: {
-          id: "number (required)",
-          eventType: "string (required: 'birthday' or 'anniversary')"
-        }
+        description: "Send emails to all users with events today",
+        authentication: "API key required (x-api-key header or apiKey query param)"
       },
       daily: {
         method: "POST",
         path: "/daily",
         description: "Send daily birthday and anniversary notifications",
+        authentication: "API key required",
         body: {
           type: "string (required: 'test', 'realtime', or 'advance')",
           date: "string (optional, format: 'YYYY-MM-DD')",
@@ -47,22 +36,27 @@ app.get('/', (req, res) => {
       hello: {
         method: "GET",
         path: "/hello",
-        description: "Check server status"
+        description: "Check server status",
+        authentication: "API key required"
       }
     }
   });
 });
+
+// Protected endpoints - require API key
+app.post('/personal-email', apiKeyAuth, personalEmailHandler);
+app.get('/hello', apiKeyAuth, helloHandler);
+app.post('/daily', apiKeyAuth, dailyEmailHandler);
 
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     message: "Endpoint not found",
     availableEndpoints: [
-      "GET /",
-      "POST /personal-email",
-      "POST /single-email",
-      "POST /daily",
-      "GET /hello"
+      "GET / (Public)",
+      "POST /personal-email (API Key required)",
+      "POST /daily (API Key required)",
+      "GET /hello (API Key required)"
     ]
   });
 });
@@ -80,12 +74,12 @@ app.use((error, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`API Key: ${process.env.API_KEY || 'NOT SET - Please set API_KEY in .env'}`);
   console.log(`Endpoints:`);
-  console.log(`- GET  http://localhost:${PORT}/`);
-  console.log(`- POST http://localhost:${PORT}/personal-email`);
-  console.log(`- POST http://localhost:${PORT}/single-email`);
-  console.log(`- POST http://localhost:${PORT}/daily`);
-  console.log(`- GET  http://localhost:${PORT}/hello`);
+  console.log(`- GET  http://localhost:${PORT}/ (Public)`);
+  console.log(`- POST http://localhost:${PORT}/personal-email (API Key required)`);
+  console.log(`- POST http://localhost:${PORT}/daily (API Key required)`);
+  console.log(`- GET  http://localhost:${PORT}/hello (API Key required)`);
 });
 
 // Handle unhandled promise rejections
